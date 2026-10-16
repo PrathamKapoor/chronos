@@ -1,0 +1,19 @@
+[package]
+name = "chronos-mtc-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "IETF PLANTS Merkle Tree Certificates: subtree decomposition, streaming TBSCertificate hashing, O(log N) skip-link landmark graph, and C2SP cosignatures."
+
+[dependencies]
+sha2.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+bytes.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+hex.workspace = true
