@@ -1,0 +1,19 @@
+[package]
+name = "chronos-ebpf-guard"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Bounded 256-byte QUIC Initial downgrade sensor, MigrationStatusEntry policy engine, signed MonitorAlert ring, and multishot batch verification ring."
+
+[dependencies]
+chronos-mtc-core = { path = "../chronos-mtc-core" }
+chronos-pqc-sys = { path = "../chronos-pqc-sys" }
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rand_chacha.workspace = true
+rand_core.workspace = true
+serde_json.workspace = true

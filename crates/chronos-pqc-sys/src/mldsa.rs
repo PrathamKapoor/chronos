@@ -118,6 +118,11 @@ impl std::fmt::Debug for MlDsa65SecretKey {
 pub struct MlDsa65Signature(Box<[u8; ML_DSA_65_SIGNATURE_LEN]>);
 
 impl MlDsa65Signature {
+    /// Wraps raw signature bytes (for example a signature received on the wire).
+    pub fn from_bytes(bytes: [u8; ML_DSA_65_SIGNATURE_LEN]) -> Self {
+        Self(Box::new(bytes))
+    }
+
     /// Raw signature bytes.
     pub fn as_bytes(&self) -> &[u8; ML_DSA_65_SIGNATURE_LEN] {
         &self.0

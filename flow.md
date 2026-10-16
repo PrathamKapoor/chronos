@@ -597,12 +597,14 @@ the tree root and returns `BatchVerifyStats { submitted, verified, failed, first
 
 #### 6.3.4 Platform split
 
-`parse_quic_initial_256b`, the policy engine, the ring and the batch verifier compile and test on every
-host (Windows, Linux, macOS) — that is where 100 % of the unit tests and chaos runs execute.
-`kernel::linux` (TC/XDP program metadata plus `bpftool prog load` / `bpftool net attach` sequencing)
-is gated behind `#[cfg(target_os = "linux")]`; `kernel::userspace_emulator` runs the identical
-policy pipeline over a userspace ring everywhere else, so the simulator exercises production logic
-rather than a re-implementation.
+The parser, the policy engine, both rings and the userspace pipeline compile and test on every host
+(Windows, Linux, macOS) — that is where 100 % of the unit tests and chaos runs execute.
+`chronos_ebpf_guard::kernel::program` holds the kernel artifact as *data*: the C source, the verifier
+budget (1,000,000 instructions, 512 B stack), and the exact `clang -target bpf` → `bpftool prog load`
+→ `bpftool net attach` sequence, all asserted in tests. A live loader is deliberately absent — it
+needs privileges and a BPF-capable kernel, which a test harness must not require — and
+`chronos_ebpf_guard::kernel::userspace` runs the *same* Rust policy the kernel program mirrors, so the
+simulator exercises production logic rather than a re-implementation.
 
 ---
 
