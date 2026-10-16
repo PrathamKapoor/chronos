@@ -1,0 +1,20 @@
+# Build output
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Isolated scratch + toolchain cache (enforced project-local confinement)
+/.tmp/
+/.cargo-home/
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.pdb
+*.ilk
+Thumbs.db
+desktop.ini
+
+# Tracked on purpose: source, docs (flow.md / decisions.md / README.md),
+# golden test vectors (vectors/*.json) and reproducible benchmark artifacts
+# (artifacts/*.json, artifacts/*.csv, artifacts/*.md).
