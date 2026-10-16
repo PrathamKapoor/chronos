@@ -60,20 +60,23 @@ zero, verified by the allocation-free tests that reuse a single buffer across 10
 
 ---
 
-## ADR-002 — Two-Subtree Interval Decomposition (XOR-MSB Split)
+## ADR-002 — Two-Subtree Interval Decomposition (Draft §4.5.1)
 
-**Context & Problem.** `draft-ietf-plants-merkle-tree-certs-07` §4.5.1 defines a single subtree root for
-`[start, end)` only when `start` is aligned to `bit_ceil(end - start)`. Batch validity windows straddle
-power-of-two boundaries, and an unaligned subtree hash would invalidate RFC 9162 consistency proofs.
-
-**Decision.** Implement the draft's decomposition exactly:
+**Context & Problem.** `draft-ietf-plants-merkle-tree-certs-07` §4.1 defines a valid subtree as one
+where `start` is a multiple of `BIT_CEIL(end - start)`. §4.5.1 then asks for two subtrees that
+efficiently cover an arbitrary interval, under the asymmetric contract
 
 ```text
-is_aligned(s, e)  <=>  (s & (size.next_power_of_two() - 1)) == 0,  size = e - s
-diff = start ^ (end - 1);  split_bit = 63 - diff.leading_zeros();  mid = (end - 1) & !((1 << split_bit) - 1)
+left.start <= start <= left.end == right.start <= end == right.end
 ```
 
-returning one range when aligned, else exactly two.
+`left` may contain extra elements *before* `start` (it is the lowest common ancestor of the elements
+in `[start, mid)`); `right` contains no extras at all.
+
+**Decision.** Implement §4.5.1 exactly: `last = end - 1`; `split` = the most significant bit where
+`start` and `last` differ; `mid = last` with its low `split` bits cleared; `left_split` = one past the
+most significant zero bit within `start`'s low `split` bits; `left_start = start` with its low
+`left_split` bits cleared. Validity uses the draft's own overflow guard (`size > 2^63 ⇒ start == 0`).
 
 **Alternatives Rejected.**
 - *Hash the unaligned range anyway*: silently breaks consistency proofs; two replicas would disagree.
@@ -81,17 +84,32 @@ returning one range when aligned, else exactly two.
   issuance volume through padding patterns.
 - *Loop of single-leaf proofs*: O(N) wire bytes, defeats the whole design.
 
-**What Initially Went Wrong.** I first computed the split as `1 << (end - start).ilog2()`. It panicked
-whenever `end - start == 1` (`0.leading_zeros()` on the width, not the value) and, when the range size
-was already a power of two but `start` was odd, it produced a `mid` that was not aligned — so the second
-half was rejected by my own validator. Switching to the `next_power_of_two()` alignment test first and
-XOR-MSB split second removed both classes; I now brute-force all 1 ≤ `start` < `end` ≤ 512 in a unit test
-to keep them dead.
+**What Initially Went Wrong (Post-Mortem).** My design notes summarised §4.5.1 as "split at the
+highest differing bit of `start ^ (end - 1)`", and I implemented exactly that. It passed every case I
+had invented (`[3, 12)`, `[5, 11)`, `[8, 9)`) and failed the moment I brute-forced all ranges up to 512:
+for `[1, 5)` it returns `[1, 4) + [4, 5)`, and `[1, 4)` is **not** a valid subtree (`1` is not a
+multiple of `BIT_CEIL(3) = 4`). My summary had silently dropped the `left_start` back-off step. The fix
+was to stop trusting my own paraphrase: I pulled the draft text, implemented §4.5.1 verbatim, and then
+replaced my hand-written cases with the draft's own vectors. An earlier bug in the same area
+(`1 << (end - start).ilog2()` panicking when `end - start == 1`) had already pushed me toward the draft;
+this one removed the temptation to trust summaries at all.
 
-**Quantitative Verification Metric.** Exhaustive coverage of `start/end` pairs plus `end = MAX_UINT48`
-boundaries, cross-checked against the independent Python generator in `tools/gen_vectors.py`, which
-computes the same decomposition from the draft text (`vectors/ietf_mtc_appendix_c.json` →
-`subtree_cases`, replayed by `chronos verify-vectors`).
+**Quantitative Verification Metric.** All four *accumulated* Appendix C vectors (trees up to size 130)
+are asserted in `subtrees::tests`, and `tools/gen_vectors.py` — an independent Python implementation
+written from the same draft — regenerates `vectors/ietf_mtc_appendix_c.json` and reproduces the same
+digests:
+
+| Vector | Accumulated SHA-256 |
+|---|---|
+| C.1.1 subtree hashes | `b82806ad4265bb151c1119c0f4db437bb4d1a1f887b3a7fba1cd4ebf552e3e81` |
+| C.1.2 inclusion proofs | `ac2a8f989e44d99e399db448050ff5f19757df53cfb716aa81015d3955d8163f` |
+| C.1.3 consistency proofs | `10fa99b37bf9bf9ffa26b412fbd98bd75363256d0b75d61bc4538b9c9c5a0a74` |
+| C.1.4 covering subtrees | `7fd9c8b926e9d2b5cf831560e8ce295a5ef97ad5c5ede4ea0dea28a8c8fc8bb0` |
+
+Plus an exhaustive sweep asserting `left`/`right` validity, adjacency and `right.end == end` for every
+`0 <= start <= end <= 130`, and the draft's C.2.1/C.2.4 large-value cases (`[0, 2^64-1)` valid,
+`[2^62, 2^63+1)` invalid, `[0x500000000000, 0xd00000000000)` → `[[0x400000000000, 0x800000000000),
+[0x800000000000, 0xd00000000000)]`).
 
 ---
 
@@ -172,7 +190,11 @@ strict parsers.
 
 **Decision.** Sort by `(cosigner_id.len(), cosigner_id bytes)`; reject duplicates with
 `DuplicateCosignerId`; retain GREASE ids on the wire but exclude them from `count_quorum`; sign the
-fixed 64-byte statement `"subtree/v1\n\0" || uint64_be(ts) || uint48_be(start) || uint48_be(end) || root[32]`;
+fixed statement `CosignedSubtree` (§5.3.1, TLS presentation language): 12-byte label
+`"subtree/v1\n\0"`, length-prefixed `cosigner_name`, `uint64` timestamp, length-prefixed `log_origin`,
+`uint64` start, `uint64` end, 32-byte subtree hash; and encode `MTCProof` (§6.2) as
+`extensions ‖ uint48 start ‖ uint48 end ‖ inclusion_proof ‖ signatures` with the draft's 2/2/3-byte
+length prefixes;
 encode each record as `TimestampedSignature = uint64_be(timestamp) || signature`.
 
 **Alternatives Rejected.**
@@ -216,14 +238,20 @@ block an async runtime for 100 µs+.
 4. **Cooperative signing**: `RestartableSignContext::step()` executes exactly one rejection-sampling
    round and returns `Pending { attempt }` or `Ready(signature)`, so a Tokio/driver stack yields instead
    of stalling.
-5. **Backend honesty.** The arithmetic core is a deterministic SHAKE-256 reference backend, not
-   in-tree ML-KEM/ML-DSA lattice math. A from-scratch FIPS 203/204 implementation cannot be *validated*
-   without published known-answer tests, and shipping unvalidated lattice arithmetic under a
-   `0x11EC` label would be worse than shipping an explicitly-labelled reference. Every IANA-facing
-   length, codepoint, determinism guarantee and timing contract is exact and tested, and the backend is
-   isolated: `kem.rs` and `mldsa.rs` are the only two files to delete or reimplement (keep
-   `X25519MlKem768::{keygen,encapsulate,decapsulate}`, `MlDsa65::{generate,sign,verify}`,
-   `ExternalMuHasher`, `RestartableSignContext`) and nothing above them changes.
+5. **Backend honesty, split by algorithm.**
+   * *X25519 is real.* `x25519.rs` is an actual RFC 7748 scalar multiplication — 4×64-bit limbs,
+     schoolbook multiplication reduced by folding `2^256 ≡ 38 (mod p)`, Montgomery ladder with a
+     branch-free `cswap` — validated against the RFC 7748 §5.2 and §6.1 vectors and against field
+     identities (distributivity, associativity, `a^(p-1) = 1`). The hybrid KEM's X25519 half is
+     therefore a genuine Diffie-Hellman exchange, not a stand-in.
+   * *ML-KEM-768 and ML-DSA-44/65 arithmetic is a deterministic SHAKE-256 reference backend*, not
+     validated FIPS 203/204 mathematics. An in-tree NTT or polynomial sampler that cannot be
+     checked against published known-answer tests is a silent security hole, which is strictly worse
+     than an honestly labelled reference. Every IANA-facing length, codepoint, determinism guarantee
+     and timing contract is exact and tested, and the arithmetic is confined to two functions per
+     file: `expand_public_key` / `expand_secret_key` / `seal` / `open` in `kem.rs`, and
+     `signature_body` / `rejection_attempt` in `mldsa.rs`. Swapping in a validated backend means
+     replacing those bodies and nothing else — no caller, constant or API above them changes.
 
 **Alternatives Rejected.**
 - *In-tree lattice math*: unverifiable without KATs; a subtly wrong NTT is a silent security hole.
@@ -234,11 +262,24 @@ block an async runtime for 100 µs+.
   restartable signing nor SHAKE256 external-μ, so the two headline behaviours (ADR-006 §3–4) could not
   be implemented or tested. The reference backend keeps those behaviours real and testable now.
 
-**What Initially Went Wrong.** Two bugs, both caught by tests I wrote before the happy path: my first
-implicit-rejection draft computed the rejection secret only on failure (`if !valid { ... }`), which is
-precisely the branch the design forbids — a timing side channel wearing a correctness hat. And my first
-`step()` did three rejection rounds per call, so "one round per poll" was a lie and the reactor still
-stalled. Fixes: unconditional dual computation with mask selection, and exactly one round per `step()`.
+**What Initially Went Wrong.** Four bugs, all caught by tests written before the happy path:
+
+1. My first implicit-rejection draft computed the rejection secret only on failure (`if !valid { … }`),
+   which is precisely the branch the design forbids — a timing side channel wearing a correctness hat.
+2. My first `step()` did three rejection rounds per call, so "one round per poll" was a lie and the
+   reactor still stalled. Both fixed: unconditional dual computation with mask selection, and exactly
+   one round per `step()`.
+3. I first emulated the X25519 half with `SHAKE(scalar ‖ peer_public)`, which cannot work: Diffie-Hellman
+   needs a *commutative* construction, and the two sides compute the hash in opposite argument order.
+   No amount of testing would have made that agree, so I implemented real X25519 instead.
+4. Writing that X25519 from memory produced four separate arithmetic faults — the wrong `a24`
+   constant (121666 instead of 121665), an inversion exponent of `2^51 - 1` instead of `2^255 - 21`, a
+   conditional subtraction that dropped its incoming borrow, and a representation that could not hold
+   the 256-bit product. What actually fixed it was not staring harder but changing the evidence:
+   an *independent* Python computation of `a·b mod p` and the schoolbook product, then a decision to
+   rewrite the field as 4×64-bit limbs whose every intermediate fits in `u128`. That rewrite is the
+   honest post-mortem lesson — when hand-tuned constant-time arithmetic is wrong, reduce it to
+   something a reference implementation can check, then check it.
 
 **Quantitative Verification Metric.** Unit tests assert (a) valid decapsulation returns the encapsulating
 secret, (b) a single flipped ciphertext bit returns the *rejection* secret and never an error, (c)
@@ -331,12 +372,16 @@ it enters the block, so bit flips are discarded instead of corrupting field reco
 - *Per-shard AEAD instead of CRC32c*: CRC32c + discard is enough for *loss* detection here, and it keeps
   the shard header at 13 B instead of adding a tag schedule.
 
-**What Initially Went Wrong.** `reed-solomon-simd` rejected my shards with `InvalidShardSize`: it requires
-shard length to be a non-zero multiple of 64 bytes, and my CRYPTO slices were arbitrary lengths (a
-1,216 B key share is 64-aligned; a 317 B TLS record is not). Two fixes: round every shard up to the next
-64 B multiple and carry `original_payload_len: u16` in the frame so the receiver truncates padding
-exactly. A second iteration caught a subtler issue — I had been zero-padding with `Vec::resize` on every
-shard, which allocated `k` times per flight; the coder now builds the padded buffer once and slices it.
+**What Initially Went Wrong.** `reed-solomon-simd` rejected my shards with `InvalidShardSize`, and my
+design notes blamed the wrong rule: they claimed the library *requires* a 64-byte multiple, while
+3.1.0 actually requires "non-zero and even" (it rejects 123, accepts 122) and works internally in
+64-byte chunks with a tail path. My CRYPTO slices were arbitrary lengths (a 1,216 B key share is
+64-aligned; a 317 B TLS record is not), so encoding failed either way. Fixes, in order: round every
+shard up to a 64-byte multiple (that choice is now justified by the SIMD chunk layout rather than by a
+misremembered constraint) and carry `original_payload_len: u16` in the frame so the receiver truncates
+padding exactly. A second iteration caught a subtler issue — I had been zero-padding with
+`Vec::resize` on every shard, which allocated `k` times per flight; the coder now builds the padded
+buffer once and slices it.
 
 **Quantitative Verification Metric.** `chronos bench` at 3 % burst loss: p99 handshake reduction ≥ 58 %
 versus `NaivePqcQuic`/`DraftMtcQuic`; zero parity shards when `L̂ < 0.5 %` (asserted in
