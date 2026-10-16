@@ -1,0 +1,19 @@
+[package]
+name = "chronos-quic-fec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "QUIC 3x anti-amplification Flight 1 planner, SIMD Reed-Solomon CRYPTO erasure coder, and congestion-signalling FEC frames."
+
+[dependencies]
+chronos-mtc-core = { path = "../chronos-mtc-core" }
+chronos-pqc-sys = { path = "../chronos-pqc-sys" }
+reed-solomon-simd.workspace = true
+crc32fast.workspace = true
+bytes.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

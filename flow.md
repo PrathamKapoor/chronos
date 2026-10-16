@@ -148,26 +148,41 @@ removes any extension whose `extnID` is the signed-certificate-timestamp OID
 children with a minimal-length SEQUENCE header. Empty input yields empty output; an empty result is
 hashed as zero bytes.
 
-#### 2.3.4 Two-subtree interval cover (`find_subtrees`)
+#### 2.3.4 Two-subtree interval cover (`find_subtrees`, §4.5.1)
+
+The draft's rule is subtler than "split the interval": `left` is allowed to extend *below* `start`
+(it is the lowest common ancestor of the elements in `[start, mid)`), while `right` never extends
+past `end`:
 
 ```text
-MAX_UINT48 = (1 << 48) - 1
-is_aligned_subtree(s, e):  size = e - s;  ceil_pow2 = size.next_power_of_two();  (s & (ceil_pow2 - 1)) == 0
+left.start <= start <= left.end == right.start <= end == right.end
 ```
 
-Preconditions: `0 <= start < end` and `end <= MAX_UINT48`, else `MtcError::InvalidRange { start, end }`.
+Validity (§4.1) is `start % BIT_CEIL(end - start) == 0`, with the draft's overflow guard: when
+`end - start > 2^63` the answer is `start == 0`.
 
-* If `is_aligned_subtree(start, end)`: return `[{ start, end }]` (1 subtree).
-* Otherwise split at the most significant differing bit:
+```text
+if end - start <= 1:  return [(start, end), (end, end)]
 
-$$\text{diff} = \text{start} \oplus (\text{end}-1), \qquad \text{split\_bit} = 63 - \text{diff.leading\_zeros}()$$
-$$\text{mid} = (\text{end}-1) \mathbin{\&} \neg\!\left(2^{\text{split\_bit}} - 1\right)$$
+last       = end - 1
+split      = index of the most significant bit where start and last differ
+mid        = last with its least significant `split` bits cleared
+left_split = (most significant zero bit index within start's low `split` bits) + 1, else 0
+left_start = start with its least significant `left_split` bits cleared
 
-Return `[{ start, mid }, { mid, end }]`. Both halves are provably aligned: `start` and `mid` are both
-multiples of `2^split_bit`, and `end - mid <= 2^split_bit`.
+return [(left_start, mid), (mid, end)]
+```
 
-Worked example: `[3, 12)` → not aligned (`size=9`, `ceil_pow2=16`, `3 & 15 = 3 ≠ 0`) → `diff = 3^11 = 8`,
-`split_bit = 3` → `mid = 11 & !7 = 8` → `[{3,8), {8,12})`. Both aligned, sizes 8 and 4.
+Worked examples from the draft's Appendix C.2.4:
+
+| Interval | left | right |
+|---|---|---|
+| `[0x0, 0x800000000000)` | `[0x0, 0x400000000000)` | `[0x400000000000, 0x800000000000)` |
+| `[0x500000000000, 0xd00000000000)` | `[0x400000000000, 0x800000000000)` | `[0x800000000000, 0xd00000000000)` |
+
+Note that the naive "XOR-MSB split at `mid`" does *not* satisfy the contract: for `[1, 5)` it yields
+`[1, 4) + [4, 5)`, and `[1, 4)` is not a valid subtree. The `left_start` back-off is what makes both
+halves valid. (ADR-002 post-mortem.)
 
 #### 2.3.5 Merkle tree state machine (`MerkleTreeLog`)
 
@@ -176,30 +191,95 @@ Node storage is level-indexed: `levels[l][i]` is the hash of leaves `[i·2^l, (i
 — `O(log N)` hashes per append, `O(N)` total storage.
 
 ```text
-node(l, r)   = SHA256(0x01 || MTH(leaves[l:r_left]) || MTH(leaves[r_left:r]))
-subtree_hash(a, b):
-    if b - a == 1 -> levels[0][a]                         (the leaf hash is MTH({entry}))
-    k = 1 << (63 - (b - a - 1).leading_zeros())           (largest power of two < size)
-    if is_aligned_subtree(a, b) && (b - a).is_power_of_two() -> single stored node lookup
-    else -> node_hash(subtree_hash(a, a+k), subtree_hash(a+k, b))
+MTH(D[a:b]), size = b - a:
+    if size == 0:        SHA256("")                      # empty subtree, §4.4.3
+    if size == 1:        levels[0][a]                     # the leaf hash is MTH({entry})
+    if size is 2^k and a % 2^k == 0: levels[k][a / 2^k]    # single stored node
+    k = largest power of two < size
+    MTH(D[a:b]) = SHA256(0x01 || MTH(D[a:a+k]) || MTH(D[a+k:b]))
 ```
 
-Every window reached by this recursion is an *aligned* subtree, so the common case is a single stored
-node: `subtree_hash` is `O(log N)` with no allocation and no hashing of untouched levels.
+Every window the draft's traversals reach is an aligned subtree, so the common case is a single
+stored node: `subtree_hash` is `O(log N)` with no allocation and no re-hashing of untouched levels.
 
-`inclusion_proof(index, start, end)` emits sibling hashes **top-down** (outermost split first). Left/right
-position is decided by `uint48` index arithmetic, never by arrival order:
+**Inclusion proofs (§4.3)** are RFC 9162 §2.1.3.1 `PATH(m, D[start:end])` with `m = index - start`,
+emitted **bottom-up** (sibling first):
 
 ```text
-rel = index - a
-rel <  k -> sibling is the RIGHT subtree [a+k, b): push hash(a+k, b); a, b = a, a+k
-rel >= k -> sibling is the LEFT  subtree [a, a+k): push hash(a, a+k);   a, b = a+k, b
+PATH(a, n, m):                       # window [a, a+n), target m
+    if n == 1: return
+    k = largest power of two < n
+    if m <  k:  PATH(a,     k,     m);     emit hash(a + k, a + n)   # right sibling
+    else:       PATH(a + k, n - k, m - k); emit hash(a,     a + k)   # left sibling
 ```
 
-`verify_inclusion` mirrors the walk, folding with `node(cur, sib)` or `node(sib, cur)` as dictated by the
-index, then requiring `cur == expected_root` and full proof consumption. This is the structural fix for
-Post-Mortem 2 (`decisions.md`, ADR-012): UDP reordering cannot invert a hash concatenation because
-order is derived from indices, never from the wire.
+Draft §4.3.1 example: entry 10 of `[8, 13)` yields `[MTH({d[11]}), MTH(D[8:10]), MTH({d[12]})]`.
+
+**Evaluation (§4.3.2)** is the relying-party path — it folds the proof into `r` along the `fn`/`sn`
+bit walk rather than recomputing the tree:
+
+```text
+fn = index - start;  sn = end - start - 1;  r = entry_hash
+for p in proof:
+    if sn == 0: fail
+    if LSB(fn) or fn == sn:
+        r = SHA256(0x01 || p || r)
+        while LSB(fn) == 0: fn >>= 1; sn >>= 1
+    else:
+        r = SHA256(0x01 || r || p)
+    fn >>= 1; sn >>= 1
+if sn != 0: fail                        # proof too short
+return r
+```
+
+Because every fold direction comes from index arithmetic, reordering, duplication or truncation can
+only produce a wrong `r` — never a wrong-sided hash. That is the structural fix for Post-Mortem 2
+(ADR-012).
+
+**Subtree consistency proofs (§4.4)** are *not* RFC 9162 `SUBPROOF`: they are the inclusion proof of
+`end - 1`, truncated at the highest starting node shared by the subtree and the tree:
+
+```text
+SUBTREE_PROOF(start, end, D_n) = SUBTREE_SUBPROOF(start, end, D_n, true)
+SUBTREE_SUBPROOF(a, start, end, n, b):      # window [a, a+n), subtree [a+start, a+end)
+    if start == 0 and end == n:  emit hash(a, a+n) unless b; return
+    k = largest power of two < n
+    if end <= k:   recurse(a, start, end, k, b);           emit hash(a + k, a + n)
+    elif k <= start: recurse(a + k, start - k, end - k, n - k, b); emit hash(a, a + k)
+    else:          recurse(a + k, 0, end - k, n - k, false);       emit hash(a, a + k)
+```
+
+Verification (§4.4.3) rebuilds **two** hashes in one pass — `fr` (subtree root) and `sr` (tree root) —
+and the final check `tn == 0 ∧ fr == subtree_hash ∧ sr == root_hash` is what proves the tree root
+*contains* the subtree root, rather than the two merely being consistent:
+
+```text
+fn = start; sn = end - 1; tn = n - 1
+if sn == tn:  while fn != sn: fn >>= 1; sn >>= 1; tn >>= 1
+else:         while fn != sn and LSB(sn): fn >>= 1; sn >>= 1; tn >>= 1
+if fn == sn:  fr = sr = subtree_hash            # starting node elided from the proof
+else:         fr = sr = proof.remove_first()    # highest full subtree on the right edge
+for c in proof:
+    if tn == 0: fail
+    if LSB(sn) or sn == tn:
+        if fn < sn: fr = SHA256(0x01 || c || fr)
+        sr = SHA256(0x01 || c || sr)
+        while LSB(sn) == 0: fn >>= 1; sn >>= 1; tn >>= 1
+    else:
+        sr = SHA256(0x01 || sr || c)
+    fn >>= 1; sn >>= 1; tn >>= 1
+```
+
+**Conformance.** All four draft "accumulated" test vectors (Appendix C.1, trees up to size 130) are
+asserted in the crate's test suite, and `vectors/ietf_mtc_appendix_c.json` is produced by
+`tools/gen_vectors.py`, an independent Python implementation written from the same draft text:
+
+| Appendix C vector | SHA-256 |
+|---|---|
+| C.1.1 subtree hashes | `b82806ad…52e3e81` |
+| C.1.2 inclusion proofs | `ac2a8f98…d8163f` |
+| C.1.3 consistency proofs | `10fa99b3…9c5a0a74` |
+| C.1.4 covering subtrees | `7fd9c8b9…8fc8bb0` |
 
 ---
 
@@ -226,36 +306,15 @@ timestamp, root_hash, checkpoint_signature }` and publishes the power-of-two ski
 
 #### 3.3.1 Edge generation and proof derivation
 
-At publish time the LDP records which edges *exist* (metadata only):
-`edges[(N - 2^k, N)] = { from_tree_size, to_tree_size }`. Consistency proof bytes are derived on demand
-from the level-indexed node storage in `O(log² N)` (`k <= 64` recursion levels, `O(log N)` per emitted
-element) and memoized in an LRU-bounded cache. This replaces `O(N²)` *stored* proofs with `O(N)` edge
-metadata; the hop *plan* — the part that makes the client fast — is unchanged.
+At publish time the LDP records which edges *exist* and at which tree sizes:
+`edges[(N - 2^k, N)] = (S_{N-2^k}, S_N)`. Each edge carries a **subtree consistency proof**
+(`SUBTREE_PROOF(0, S_{from}, S_{to})`, draft §4.4) — the prefix-subtree special case of the
+general `[start, end)` proof — derived on demand from the level-indexed node storage in `O(log² N)`
+and memoized in an insertion-ordered cache (capacity 4,096). This keeps LDP memory at `O(N)` instead
+of `O(N log²)` while the *hop plan*, the part that makes the client fast, is unchanged.
 
-Subtree consistency proof, RFC 9162 §2.1.4.2 `SUBPROOF`, on window `[a, a+n)` holding `m` old leaves:
-
-```text
-subproof(a, n, m, is_top):
-    if m == n:  push hash(a, a+n) unless is_top;  return
-    k = largest power of two < n
-    if m <= k:  subproof(a,     k,     m,     false);  push hash(a + k, a + n)     # right sibling
-    else:       subproof(a + k, n - k, m - k, false);  push hash(a,     a + k)     # left sibling
-```
-
-Verification is the structural mirror that rebuilds **both** roots from one proof, which is why a
-tampered element cannot be laundered into the new root:
-
-```text
-consume(n, m):                       # returns (new_window_root, old_prefix_root)
-    if m == n: h = next_proof(); return (h, h)
-    k = largest power of two < n
-    if m <= k: (nl, ol) = consume(k, m);       hr = next_proof(); return (node(nl, hr), ol)
-    else:       (nr, or) = consume(n - k, m - k); hl = next_proof(); return (node(hl, nr), node(hl, or))
-```
-
-Top level: `m == 0` ⇒ proof must be empty (nothing to bind); `m == n` ⇒ proof must be empty and the
-roots must be equal; otherwise require `old_prefix_root == from_root`, `new_window_root == to_root`, and
-exact proof consumption.
+Verification chains the roots hop by hop (`verify_prefix_consistency`) and then checks exactly one
+checkpoint signature (ADR-003).
 
 #### 3.3.2 Greedy binary-jump catch-up (`plan_skip_link_sync`)
 
@@ -274,42 +333,69 @@ while curr < target:
 (bound 17). Verification chains the roots across hops and performs **exactly one** ML-DSA-65 check, on
 the final target landmark: intermediate edges are bound by collision-resistant consistency hashes.
 
-#### 3.3.3 Canonical C2SP cosignature envelope
+#### 3.3.3 Canonical cosignature and MTCProof encodings
 
-Signed statement (64 B, `build_cosigned_subtree_payload`):
+`id-alg-mtcProof` = **1.3.6.1.5.5.7.6.67** (`06 09 2B 06 01 05 05 07 06 43`) is the *algorithm*
+identifier that appears in the certificate's `AlgorithmIdentifier`; the proof itself is the
+`signatureValue`, encoded with the TLS presentation language (RFC 9846 §3) and with **no additional
+ASN.1 wrapping** (draft §6.2).
+
+The statement a cosigner signs over (draft §5.3.1):
+
+```text
+struct {
+    uint8 label[12]        = "subtree/v1\n\0";          # 73 75 62 74 72 65 65 2F 76 31 0A 00
+    opaque cosigner_name<1..2^8-1>;                     # u8 length + "oid/1.3.6.1.4.1.<ca id>"
+    uint64 timestamp;                                   # MUST be 0 inside an MTCProof
+    opaque log_origin<1..2^8-1>;                        # u8 length + "oid/1.3.6.1.4.1.<log id>"
+    uint64 start;                                       # full uint64 in this structure
+    uint64 end;
+    HashValue subtree_hash;                             # 32 bytes
+} CosignedSubtree;
+```
+
+Worked example (`ca id 32473.1`, `log id 32473.2`, `start 3`, `end 12`):
 
 | Offset | Length | Content |
 |---|---|---|
-| 0 | 12 | `"subtree/v1\n\0"` = `73 75 62 74 72 65 65 2F 76 31 0A 00` |
-| 12 | 8 | `uint64_be(timestamp)` |
-| 20 | 6 | `uint48_be(start)` |
-| 26 | 6 | `uint48_be(end)` |
-| 32 | 32 | `root_hash` |
+| 0 | 12 | `"subtree/v1\n\0"` |
+| 12 | 1 | `23` (length of the cosigner name) |
+| 13 | 23 | `oid/1.3.6.1.4.1.32473.1` |
+| 36 | 8 | `uint64_be(0)` timestamp |
+| 44 | 1 | `23` |
+| 45 | 23 | `oid/1.3.6.1.4.1.32473.2` |
+| 68 | 8 | `uint64_be(3)` |
+| 76 | 8 | `uint64_be(12)` |
+| 84 | 32 | subtree hash |
 
-Checkpoint statement (68 B, `checkpoint_payload`), the input to the injected signer:
-
-```text
-"checkpoint/v1\n\0" (12 B) || uint64_be(landmark_id) || uint64_be(tree_size) || uint64_be(timestamp) || root_hash[32]
-```
-
-Each witness record is a `TimestampedSignature`: `uint64_be(timestamp) || signature_bytes`.
-
-**Canonicalization** (`canonicalize_cosignatures`): sort by `(cosigner_id.len(), cosigner_id bytes)`,
-reject adjacent duplicates with `MtcError::DuplicateCosignerId`, never reorder by arrival. RFC 8701
-GREASE ids (`len == 2 && id[0] & 0x0F == 0x0A && id[1] & 0x0F == 0x0A`) are retained on the wire for
-protocol hygiene but excluded from `count_quorum`.
-
-**`MTCProof` canonical encoding** (`encode_mtc_proof` / `decode_mtc_proof`):
+The proof structure itself (draft §6.2):
 
 ```text
-OID_MTC_PROOF (10 B) || 0x01 (version)
-  || uint48_be(start) || uint48_be(end) || root_hash[32]
-  || uint16_be(proof_len) || proof hashes (32 B each, top-down canonical order)
-  || uint16_be(cosigner_count)
-  || per cosigner: uint8(id_len) || id || uint64_be(timestamp) || uint16_be(sig_len) || signature
+struct { TrustAnchorID cosigner_id; opaque signature<0..2^16-1>; } Cosignature;
+
+struct {
+    MTCLogEntryExtension extensions<0..2^16-1>;   # u16 length + log entry extensions value
+    uint48 start;                                # 6 bytes, big endian
+    uint48 end;
+    opaque inclusion_proof<0..2^16-1>;           # u16 length + concatenated 32-byte hashes
+    Cosignature signatures<0..2^24-1>;           # 3-byte length + concatenated Cosignatures
+} MTCProof;
 ```
 
-Decoding re-canonicalizes and re-encodes; a byte-identical round trip is a test invariant (ADR-005).
+Each `Cosignature` is `u8(cosigner_id_len) ‖ cosigner_id ‖ uint16_be(signature_len) ‖ signature`.
+
+**Canonicalization** (§6.2, closing issues #341/#342): signatures are ordered by `cosigner_id`
+excluding the length prefix — shorter identifiers first, then lexicographic; duplicate identifiers
+are rejected outright; RFC 8701 GREASE identifiers (two bytes matching `0x?A?A`) stay on the wire but
+never count toward quorum. A parser MUST reject duplicates or a mis-ordered list.
+
+Checkpoint signatures (used by `tlog-witness`-style integration) are
+`TimestampedSignature = uint64_be(timestamp) ‖ signature_bytes`. The 71-byte checkpoint statement that
+ChronosMTC signs per landmark is:
+
+```text
+"checkpoint/v1\n\0" (15 B) || uint64_be(landmark_id) || uint64_be(tree_size) || uint64_be(timestamp) || root_hash[32]
+```
 
 ---
 
@@ -362,17 +448,20 @@ aligned      = 64 * ceil(max(ceil(data_bytes / k), 64) / 64)
 total(k, r)  = (k + r) * (aligned + 13)                        # 13 B FEC_SOURCE/FEC_REPAIR header
 ```
 
-Selection is an exhaustive search over `k ∈ [2, 8]` and `r ∈ [required_r ..= 0]` (descending): the first
-`(k, r)` whose `total <= credit` wins, minimizing wire bytes and maximizing parity.
+Selection is an exhaustive search: for `r` from `required_r` down to 0, every `k ∈ [2, 8]` is costed and
+the cheapest layout whose `total_wire_bytes <= credit` wins. More data shards are usually *cheaper*
+here — eight 256-byte shards beat two 1,024-byte shards — because the per-frame header is amortized
+and a smaller shard has a lower loss probability.
 
-| Mode | Condition | Flight 1 content | Worked example (credit 3,600 B, L̂ = 1 %) |
+| Mode | Condition | Flight 1 content | Worked example (credit 3,600 B, L̂ = 1 % ⇒ `required_r = 1`) |
 |---|---|---|---|
-| A `FreshLandmarkRelative` | `client_landmark >= cert_landmark` | 1,240 + 736 = 1,976 B | `k = 2, r = 1`, aligned 1,024 ⇒ 3 × 1,037 = **3,111 B** |
-| B `InBandSkipLinkDelta` | `client_landmark < cert_landmark` and it fits | + `hops × 40` B skip-links | `Δ = 64` ⇒ 6 hops ⇒ data 2,216 B ⇒ `k = 2, r = 1` ⇒ **3,495 B** |
-| C `StatelessRetryThenStandalone` | no landmark, or nothing fits | Retry token (120 B) + Standalone MTC (8,200 B) after address validation | 120 B now, unblocked afterwards |
+| A `FreshLandmarkRelative` | `client_landmark >= cert_landmark` | 1,240 + 736 = 1,976 B | `k = 8, r = 1`, 247 B raw ⇒ aligned 256 ⇒ 9 × 269 = **2,421 B** |
+| B `InBandSkipLinkDelta` | `client_landmark < cert_landmark` | + `hops × 40` B skip-links | `Δ = 64` ⇒ `popcount(64) = 1` hop ⇒ data 2,016 B ⇒ `k = 8, r = 1` ⇒ **2,421 B**; `Δ = 10,000` ⇒ 5 hops ⇒ data 2,176 B ⇒ **2,421 B** |
+| C `StatelessRetryThenStandalone` | no landmark, or nothing fits | Retry token (120 B), then the Standalone MTC (8,200 B) once the address is validated | 120 B now, unblocked afterwards |
 
-The planner reports `stall_expected` whenever the chosen parity is below `required_r`, so the caller can
-act on a lossy-but-legal plan rather than discovering it at the wire.
+The planner reports `parity_reduced` when it had to ship with less parity than the loss estimate asked
+for, and `stall_expected` when no layout at all fits — in which case it has already fallen back to Mode
+C, so a caller can always act on the reported plan instead of discovering a stall at the wire.
 
 ---
 
@@ -408,11 +497,17 @@ FEC_RECOVERED (0x3f53): varint type || block_id u32 || recovered_count u8
 
 ```text
 raw_shard        = ceil(payload_len / k)
-aligned_shard_len = 64 * ceil(max(raw_shard, 64) / 64)          # reed-solomon-simd shard rule
+aligned_shard_len = 64 * ceil(max(raw_shard, 64) / 64)          # ChronosMTC alignment policy
 data shards      = payload[0..k-1], final shard zero-padded to aligned_shard_len
 crc32c           = crc32fast::hash(shard)                       # Castagnoli
 encoder          = ReedSolomonEncoder::new(k, r, aligned_shard_len)
 ```
+
+`reed-solomon-simd` 3.1 hard-requires a non-zero **even** shard length (odd lengths such as 123 are
+rejected with `InvalidShardSize`); 64-byte alignment is ChronosMTC's own policy, chosen because the
+library works internally in 64-byte chunks and a 64-aligned shard avoids the tail-chunk path
+entirely. `original_payload_len: u16` in the frame header lets the receiver strip the padding
+exactly, which is what lets arbitrarily sized CRYPTO payloads be coded.
 
 Receiver (`FecBlockAssembler`): every shard's CRC32c is checked *before* it enters the block, so a
 Byzantine bit flip is discarded rather than poisoning Galois-field reconstruction. As soon as
