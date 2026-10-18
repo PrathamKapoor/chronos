@@ -1,0 +1,32 @@
+[package]
+name = "chronos-sim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Seed-deterministic virtual chaos harness, 5-layer latency profiler, Glass's delta calculator, and the chronos CLI."
+build = "build.rs"
+# The single binary is declared explicitly below. Auto-discovery stays off so that
+# `src/bin/chronos.rs` is mounted as a module by `src/lib.rs` rather than compiled as a second,
+# conflicting binary target.
+autobins = false
+
+[[bin]]
+name = "chronos"
+path = "src/lib.rs"
+
+[dependencies]
+sha2.workspace = true
+sha3.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+bytes.workspace = true
+crc32fast.workspace = true
+reed-solomon-simd.workspace = true
+rand.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
+clap.workspace = true
