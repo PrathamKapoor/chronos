@@ -6,7 +6,6 @@
 
 use rand_chacha::ChaCha8Rng;
 use rand_core::{RngCore, SeedableRng};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// The default seed, as documented in `flow.md` §7.3.5.
@@ -161,7 +160,7 @@ mod tests {
         assert_eq!(parse_seed("0x9F4A2C01").unwrap(), DEFAULT_SEED);
         assert_eq!(parse_seed("0X9f4a2c01").unwrap(), DEFAULT_SEED);
         assert_eq!(parse_seed(" 0x9F4A2C01 ").unwrap(), DEFAULT_SEED);
-        assert_eq!(parse_seed("2678338561").unwrap(), DEFAULT_SEED);
+        assert_eq!(parse_seed("2672438273").unwrap(), DEFAULT_SEED);
         assert_eq!(parse_seed("0").unwrap(), 0);
         assert_eq!(parse_seed(&u64::MAX.to_string()).unwrap(), u64::MAX);
     }

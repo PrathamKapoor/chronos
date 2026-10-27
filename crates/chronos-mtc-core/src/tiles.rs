@@ -3,8 +3,8 @@
 //! A level-`L` tile holds 256 node hashes, each covering `2^L` leaves, so a full tile is
 //! `256 · 32 = 8,192` bytes and a full tile at level `L` covers `256 · 2^L` leaves.
 
-use crate::error::{MtcError, MtcResult};
-use crate::subtrees::{MerkleTreeLog, MAX_UINT48};
+use super::error::{MtcError, MtcResult};
+use super::subtrees::{MerkleTreeLog, MAX_UINT48};
 use serde::{Deserialize, Serialize};
 
 /// C2SP tile height: `H = 8`.
@@ -174,7 +174,7 @@ impl LandmarkStateGuard {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

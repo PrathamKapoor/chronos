@@ -504,7 +504,7 @@ pub fn chronos_flight1_summary(staleness: StalenessProfile, loss: LossProfile) -
 pub fn chronos_planned_payload(staleness: StalenessProfile) -> usize {
     SERVER_HELLO_PQC_BYTES
         + LANDMARK_MTC_PROOF_BYTES
-        + hop_count_for(staleness.delta) * chronos_mtc_core::skip_link::SKIP_LINK_HOP_BYTES
+        + hop_count_for(staleness.delta) * SKIP_LINK_HOP_BYTES
 }
 
 /// Bytes an unknown-CA client must be served with (Retry now, Standalone MTC later).

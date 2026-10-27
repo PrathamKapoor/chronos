@@ -285,10 +285,10 @@ int chronos_guard(struct __sk_buff *skb)
 char _license[] SEC("license") = "GPL";
 "#;
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
+    use super::super::super::parser::MAX_EBPF_INSPECT_BYTES;
     use super::*;
-    use crate::parser::MAX_EBPF_INSPECT_BYTES;
 
     #[test]
     fn program_specs_are_consistent() {

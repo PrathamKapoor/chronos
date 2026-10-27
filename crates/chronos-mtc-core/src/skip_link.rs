@@ -6,8 +6,8 @@
 //! `popcount(target - client) <= ceil(log2(delta))` and only the *final* checkpoint needs an
 //! ML-DSA-65 verification (ADR-003).
 
-use crate::error::{MtcError, MtcResult};
-use crate::subtrees::{MerkleTreeLog, SubtreeConsistencyProof};
+use super::error::{MtcError, MtcResult};
+use super::subtrees::{MerkleTreeLog, SubtreeConsistencyProof};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -384,7 +384,7 @@ impl LandmarkGraph {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};

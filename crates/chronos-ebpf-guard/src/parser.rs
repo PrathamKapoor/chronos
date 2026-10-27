@@ -323,7 +323,7 @@ fn walk_frame(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

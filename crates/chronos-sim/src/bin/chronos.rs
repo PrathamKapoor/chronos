@@ -17,11 +17,11 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use chronos_sim::bench::BenchConfig;
-use chronos_sim::bench::{calibration_passed, export, render_csv, render_scorecard, run_benchmark};
-use chronos_sim::rng::{format_seed, parse_seed, DEFAULT_SEED};
-use chronos_sim::sim::{run as run_sim, SimConfig};
-use chronos_sim::vectors::{verify_file, VECTOR_PATH};
+use crate::bench::BenchConfig;
+use crate::bench::{calibration_passed, export, render_csv, render_scorecard, run_benchmark};
+use crate::rng::{format_seed, parse_seed, DEFAULT_SEED};
+use crate::sim::{run as run_sim, SimConfig};
+use crate::vectors::{verify_file, VECTOR_PATH};
 
 /// Loss-resilient post-quantum QUIC with Merkle Tree Certificates.
 #[derive(Parser, Debug)]

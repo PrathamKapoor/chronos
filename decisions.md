@@ -1,7 +1,7 @@
 # ChronosMTC v1.0 — Architecture Decision Records and Engineering Defense
 
 **Author:** Pratham Kapoor ([@PrathamKapoor](https://github.com/PrathamKapoor) | prathamkapoor027@gmail.com)
-**Repository:** <https://github.com/PrathamKapoor/chronos-mtc>
+**Repository:** <https://github.com/PrathamKapoor/chronos>
 
 Every record below follows the same five sections: **Context & Problem**, **Decision**,
 **Alternatives Rejected**, **What Initially Went Wrong (Post-Mortem)**, **Quantitative Verification

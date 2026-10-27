@@ -13,7 +13,7 @@ version = "1.0.0"
 edition = "2021"
 authors = ["PrathamKapoor <prathamkapoor027@gmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/PrathamKapoor/chronos-mtc"
+repository = "https://github.com/PrathamKapoor/chronos"
 
 [workspace.dependencies]
 sha2 = "0.10"

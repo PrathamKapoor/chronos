@@ -4,12 +4,8 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Seed-deterministic virtual chaos harness, 5-layer latency profiler, Glass's delta calculator, and the chronos CLI."
 build = "build.rs"
-# The single binary is declared explicitly below. Auto-discovery stays off so that
-# `src/bin/chronos.rs` is mounted as a module by `src/lib.rs` rather than compiled as a second,
-# conflicting binary target.
-autobins = false
+autolib = false
 
 [[bin]]
 name = "chronos"

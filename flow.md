@@ -1,7 +1,7 @@
 # ChronosMTC v1.0 — End-to-End System Execution Flow Specification
 
 **Author:** Pratham Kapoor ([@PrathamKapoor](https://github.com/PrathamKapoor) | prathamkapoor027@gmail.com)
-**Repository:** <https://github.com/PrathamKapoor/chronos-mtc>
+**Repository:** <https://github.com/PrathamKapoor/chronos>
 **Standards baseline:** IETF `draft-ietf-plants-merkle-tree-certs-07`, IETF `draft-gray-plants-mtc-deploy-use-cases-01`, IETF `draft-ietf-tls-trust-anchor-ids-06`, C2SP `tlog-tiles` / `tlog-cosignature`, RFC 9000 (QUIC), RFC 9002 (QUIC Congestion Control), RFC 9162 (Certificate Transparency v2), NIST FIPS 203 (ML-KEM), NIST FIPS 204 (ML-DSA)
 
 This document is the normative execution contract for the workspace. Every byte offset, wire constant,

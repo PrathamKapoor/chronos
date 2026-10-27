@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! # chronos-mtc-core
 //!
 //! IETF PLANTS Merkle Tree Certificate engine: canonical subtree decomposition
@@ -14,12 +15,19 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[path = "cosign.rs"]
 pub mod cosign;
+#[path = "error.rs"]
 pub mod error;
+#[path = "skip_link.rs"]
 pub mod skip_link;
+#[path = "subtrees.rs"]
 pub mod subtrees;
+#[path = "tbs_hasher.rs"]
 pub mod tbs_hasher;
+#[path = "tiles.rs"]
 pub mod tiles;
+#[path = "trust_anchor.rs"]
 pub mod trust_anchor;
 
 pub use cosign::{

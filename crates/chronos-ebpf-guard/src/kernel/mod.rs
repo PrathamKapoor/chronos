@@ -9,6 +9,10 @@
 //! neither of which belongs in a test harness. What *is* tested is that the two planes agree on the
 //! same bounded window, the same signals and the same integer policy thresholds.
 
+#[cfg(chronos_bundled)]
+#[allow(unused_imports)]
+pub use super::{chrono_mtc_core, chrono_pqc_sys, chronos_mtc_core, chronos_pqc_sys};
+
 pub mod program;
 pub mod userspace;
 

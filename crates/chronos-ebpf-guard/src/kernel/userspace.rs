@@ -7,12 +7,14 @@
 //! [`super::program`] mirrors these steps in C for the in-kernel fast path; the two are held to the
 //! same golden vectors.
 
-use crate::parser::{parse_quic_initial_256b, ParseError, MAX_EBPF_INSPECT_BYTES};
-use crate::policy::{
+use super::super::parser::{parse_quic_initial_256b, ParseError, MAX_EBPF_INSPECT_BYTES};
+use super::super::policy::{
     classify, evaluate_packet, FrozenDeviceRecord, MigrationPhase, MonitorAlert, PacketVerdict,
     PeerAddr, PeerCounters, VerdictCode,
 };
-use crate::rings::MonitorAlertRing;
+use super::super::rings::MonitorAlertRing;
+#[cfg(chronos_bundled)]
+use crate::chronos_pqc_sys;
 use serde::{Deserialize, Serialize};
 
 /// Configuration of the guard pipeline.
@@ -244,10 +246,10 @@ fn digest_of(datagram: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
+    use super::super::super::policy::{VerdictCode, PQC_KEM_PATTERN, TRUST_ANCHORS_PATTERN};
     use super::*;
-    use crate::policy::{VerdictCode, PQC_KEM_PATTERN, TRUST_ANCHORS_PATTERN};
 
     fn peer() -> PeerAddr {
         PeerAddr {
@@ -368,8 +370,8 @@ mod tests {
 
         let mut payload = b"client hello".to_vec();
         payload.extend_from_slice(&PQC_KEM_PATTERN);
-        payload.extend_from_slice(&crate::parser::MTC_HINT_MAGIC);
-        payload.push(crate::parser::MTC_HINT_VERSION);
+        payload.extend_from_slice(&super::super::super::parser::MTC_HINT_MAGIC);
+        payload.push(super::super::super::parser::MTC_HINT_VERSION);
         payload.extend_from_slice(&[0u8; 6]);
         payload.extend_from_slice(&(freeze + 1).to_be_bytes()[2..]);
 
@@ -450,10 +452,13 @@ mod tests {
             guard.inspect(&initial(b"client hello"), peer(), index);
         }
         assert_eq!(guard.dropped(), 200);
-        assert_eq!(guard.alerts().len(), crate::rings::ALERT_RING_CAPACITY);
+        assert_eq!(
+            guard.alerts().len(),
+            super::super::super::rings::ALERT_RING_CAPACITY
+        );
         assert_eq!(
             guard.alerts().total_dropped(),
-            200 - crate::rings::ALERT_RING_CAPACITY as u64
+            200 - super::super::super::rings::ALERT_RING_CAPACITY as u64
         );
     }
 }

@@ -5,7 +5,7 @@
 //! with a continuation bit, and a trailing bare `0x80` is the *open-ended* infinity marker — not a
 //! truncated varint, which is exactly what my first decoder got wrong (ADR-007).
 
-use crate::error::{MtcError, MtcResult};
+use super::error::{MtcError, MtcResult};
 use serde::{Deserialize, Serialize};
 
 /// `trust_anchors` ClientHello extension type.
@@ -198,7 +198,7 @@ pub fn encode_landmark_pattern(
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

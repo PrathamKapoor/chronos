@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! # chronos-pqc-sys
 //!
 //! Post-quantum primitives for ChronosMTC with **exact wire geometry** and the behavioural contracts
@@ -32,8 +33,11 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[path = "kem.rs"]
 pub mod kem;
+#[path = "mldsa.rs"]
 pub mod mldsa;
+#[path = "x25519.rs"]
 pub mod x25519;
 
 pub use kem::{

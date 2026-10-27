@@ -5,7 +5,14 @@
 //! handshake (`draft-gray-plants-mtc-deploy-use-cases-01` §3.6.1–3.6.4). The policy below turns that
 //! into three explicit rules over data visible in the first 256 bytes of a QUIC Initial.
 
-use crate::parser::{QuicInitialSummary, MAX_EBPF_INSPECT_BYTES};
+use super::parser::{QuicInitialSummary, MAX_EBPF_INSPECT_BYTES};
+#[cfg(chronos_bundled)]
+use crate::chronos_pqc_sys;
+#[cfg(chronos_bundled)]
+use crate::chronos_pqc_sys::{
+    ml_dsa_65_sign, ml_dsa_65_verify, ExternalMuHasher, MlDsa65PublicKey, MlDsa65SecretKey,
+};
+#[cfg(not(chronos_bundled))]
 use chronos_pqc_sys::{
     ml_dsa_65_sign, ml_dsa_65_verify, ExternalMuHasher, MlDsa65PublicKey, MlDsa65SecretKey,
 };
@@ -347,10 +354,10 @@ fn parse_signature(bytes: &[u8]) -> Result<chronos_pqc_sys::MlDsa65Signature, ()
     Ok(chronos_pqc_sys::MlDsa65Signature::from_bytes(array))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
+    use super::super::parser::parse_quic_initial_256b;
     use super::*;
-    use crate::parser::parse_quic_initial_256b;
     use chronos_pqc_sys::ml_dsa_65_keygen;
     use rand_chacha::ChaCha8Rng;
     use rand_core::SeedableRng;
@@ -475,8 +482,8 @@ mod tests {
         };
         let mut payload = Vec::new();
         payload.extend_from_slice(&PQC_KEM_PATTERN);
-        payload.extend_from_slice(&crate::parser::MTC_HINT_MAGIC);
-        payload.push(crate::parser::MTC_HINT_VERSION);
+        payload.extend_from_slice(&super::super::parser::MTC_HINT_MAGIC);
+        payload.push(super::super::parser::MTC_HINT_VERSION);
         payload.extend_from_slice(&[0u8; 6]); // serial
         payload.extend_from_slice(&(frozen.freeze_timestamp + 1).to_be_bytes()[2..]);
 
@@ -529,8 +536,8 @@ mod tests {
         };
         let mut payload = Vec::new();
         payload.extend_from_slice(&PQC_KEM_PATTERN);
-        payload.extend_from_slice(&crate::parser::MTC_HINT_MAGIC);
-        payload.push(crate::parser::MTC_HINT_VERSION);
+        payload.extend_from_slice(&super::super::parser::MTC_HINT_MAGIC);
+        payload.push(super::super::parser::MTC_HINT_VERSION);
         payload.extend_from_slice(&[0u8; 6]);
         payload.extend_from_slice(&(frozen.freeze_timestamp - 1_000).to_be_bytes()[2..]);
 

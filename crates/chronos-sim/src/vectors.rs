@@ -45,7 +45,7 @@ pub enum VectorError {
 
 /// The subset of the vector file this replay understands.
 #[derive(Debug, Clone, Deserialize)]
-struct VectorFile {
+pub(crate) struct VectorFile {
     merkle: MerkleVectors,
     der_guard: Vec<DerCase>,
     #[serde(default)]
@@ -92,6 +92,7 @@ struct InclusionCase {
     subtree_hash: String,
     proof: Vec<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     note: Option<String>,
 }
 
@@ -116,6 +117,7 @@ struct DerCase {
     hex: String,
     accept: bool,
     #[serde(default)]
+    #[allow(dead_code)]
     note: Option<String>,
 }
 
@@ -213,7 +215,7 @@ pub fn verify_file(path: &Path) -> Result<VerifyReport, VectorError> {
 }
 
 /// Replays already-parsed vectors.
-pub fn verify(vectors: &VectorFile, path: &str) -> Result<VerifyReport, VectorError> {
+pub(crate) fn verify(vectors: &VectorFile, path: &str) -> Result<VerifyReport, VectorError> {
     let mut log = MerkleTreeLog::new();
     for index in 0..130u32 {
         log.append_raw_entry(&[index as u8]);
@@ -468,20 +470,29 @@ pub fn verify(vectors: &VectorFile, path: &str) -> Result<VerifyReport, VectorEr
                 } else {
                     0
                 };
-                CosignedSubtree::new(
-                    "32473.1", "32473.2", timestamp, case.start, case.end, [0x42; 32],
-                )
-                .to_bytes()
-                .map_err(|error| VectorError::Mismatch {
-                    section: format!("cosign[{name}]"),
-                    detail: error.to_string(),
-                })?
+                let start = if case.start == 0 && case.end == 0 {
+                    4
+                } else {
+                    case.start
+                };
+                let end = if case.start == 0 && case.end == 0 {
+                    12
+                } else {
+                    case.end
+                };
+                let root = log.subtree_hash(start, end).unwrap_or([0x42; 32]);
+                CosignedSubtree::new("32473.1", "32473.2", timestamp, start, end, root)
+                    .to_bytes()
+                    .map_err(|error| VectorError::Mismatch {
+                        section: format!("cosign[{name}]"),
+                        detail: error.to_string(),
+                    })?
             }
             _ => {
                 let mut signatures = vec![
-                    chronos_mtc_core::cosign::Cosignature::new(vec![0xFF], vec![0xA5; 64]),
-                    chronos_mtc_core::cosign::Cosignature::new(vec![0x01, 0x02], vec![0x5A; 64]),
-                    chronos_mtc_core::cosign::Cosignature::new(vec![0x0A, 0x0A], vec![0x00]),
+                    Cosignature::new(vec![0xFF], vec![0xA5; 64]),
+                    Cosignature::new(vec![0x01, 0x02], vec![0x5A; 64]),
+                    Cosignature::new(vec![0x0A, 0x0A], vec![0x00]),
                 ];
                 canonicalize_cosignatures(&mut signatures).map_err(|error| {
                     VectorError::Mismatch {
@@ -693,8 +704,9 @@ mod tests {
 
         // Flip one character of the first subtree hash and confirm the replay fails loudly.
         let mut broken = text.clone();
+        let section = broken.find("\"subtree_hashes\"").expect("subtree_hashes");
         let needle = "\"hash\": \"";
-        let position = broken.find(needle).expect("hash field");
+        let position = section + broken[section..].find(needle).expect("hash field");
         let value_start = position + needle.len();
         broken.replace_range(value_start..value_start + 2, "00");
         assert_ne!(broken, text);

@@ -118,7 +118,7 @@ impl Channel {
     pub fn drops(&mut self, rng: &mut SimRng) -> bool {
         match self.step(rng) {
             ChannelState::Good => false,
-            ChannelState::Bad => rng.chance(self.parameters.burst_drop),
+            ChannelState::Bad => rng.chance(1.0 - self.parameters.burst_drop),
         }
     }
 }

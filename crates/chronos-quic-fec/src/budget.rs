@@ -16,7 +16,12 @@
 //!
 //! Parity is driven by the smoothed loss estimate: `r = 0` below 0.5 %, `1` below 2.5 %, else `2`.
 
-use crate::fec_coder::{ShardLayout, MAX_DATA_SHARDS, MIN_DATA_SHARDS};
+use super::fec_coder::{ShardLayout, MAX_DATA_SHARDS, MIN_DATA_SHARDS};
+#[cfg(chronos_bundled)]
+use crate::chronos_mtc_core;
+#[cfg(chronos_bundled)]
+use crate::chronos_mtc_core::skip_link::hop_count_for;
+#[cfg(not(chronos_bundled))]
 use chronos_mtc_core::skip_link::hop_count_for;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -267,11 +272,11 @@ impl AmplificationPlanner {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
+    use super::super::fec_coder::ShardLayout;
+    use super::super::frames::{FEC_REPAIR_HEADER_BYTES, FEC_SOURCE_HEADER_BYTES};
     use super::*;
-    use crate::fec_coder::ShardLayout;
-    use crate::frames::{FEC_REPAIR_HEADER_BYTES, FEC_SOURCE_HEADER_BYTES};
 
     fn plan_with(
         client_rx: usize,
@@ -391,7 +396,7 @@ mod tests {
         assert_eq!(plan.required_parity, 0);
         assert_eq!(
             plan.total_flight1_wire_bytes,
-            plan.k * (plan.shard_len + crate::frames::FEC_SOURCE_HEADER_BYTES)
+            plan.k * (plan.shard_len + super::super::frames::FEC_SOURCE_HEADER_BYTES)
         );
         assert!(plan.total_flight1_wire_bytes < 3_600);
     }

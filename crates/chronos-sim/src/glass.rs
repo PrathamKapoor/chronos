@@ -86,7 +86,7 @@ impl GlassDelta {
     /// Relative change as a percentage string.
     pub fn relative_change_text(&self) -> String {
         match self.relative_change {
-            Some(value) => format!("{value:+.1}%"),
+            Some(value) => format!("{:+.1}%", value * 100.0),
             None => "n/a".to_string(),
         }
     }
@@ -152,7 +152,7 @@ impl RankAnalysis {
         match self.target_rank_fraction {
             fraction if fraction >= 0.9 => "consistent win",
             fraction if fraction >= 0.75 => "mostly consistent",
-            fraction if fraction > 0.5 => "mixed",
+            fraction if fraction >= 0.5 => "mixed",
             _ => "consistent loss",
         }
     }
@@ -191,7 +191,7 @@ pub fn rank_analysis(target: &[u64], control: &[u64]) -> RankAnalysis {
             None => counts.push((*difference, 1)),
         }
     }
-    counts.sort_unstable_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    counts.sort_by_key(|a| std::cmp::Reverse(a.1));
     let most_frequent_delta = counts.first().map_or(0, |(value, _)| *value);
 
     RankAnalysis {

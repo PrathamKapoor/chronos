@@ -3,7 +3,7 @@
 //!
 //! # Backend status
 //!
-//! The same rule as [`crate::kem`]: every externally observable property — codepoints, key and
+//! The same rule as [`super::kem`]: every externally observable property — codepoints, key and
 //! signature lengths, deterministic seeded key generation, the external-μ construction, the
 //! rejection-sampling loop shape and its one-round-per-poll contract — is exact and tested; the
 //! lattice arithmetic is a deterministic SHAKE-256 reference backend rather than validated FIPS 204
@@ -362,7 +362,7 @@ pub fn ml_dsa_65_verify(
     let counter = signature.counter();
     let body = signature.body();
     let expected = signature_tag(public_key.as_bytes(), mu, counter, body);
-    crate::kem::ct_eq(signature.tag(), &expected) == 1
+    super::kem::ct_eq(signature.tag(), &expected) == 1
 }
 
 /// Outcome of one cooperative signing step.
@@ -443,7 +443,7 @@ fn ml_dsa_44_free_public_key(seed: &[u8; 32]) -> [u8; ML_DSA_65_PUBLIC_KEY_LEN] 
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
     use rand_chacha::ChaCha8Rng;

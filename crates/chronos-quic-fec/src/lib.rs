@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! # chronos-quic-fec
 //!
 //! The wire-budget and loss-resilience half of ChronosMTC:
@@ -18,8 +19,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[cfg(chronos_bundled)]
+#[allow(unused_imports)]
+pub use super::{chrono_mtc_core, chrono_pqc_sys, chronos_mtc_core, chronos_pqc_sys};
+#[path = "budget.rs"]
 pub mod budget;
+#[path = "fec_coder.rs"]
 pub mod fec_coder;
+#[path = "frames.rs"]
 pub mod frames;
 
 pub use budget::{

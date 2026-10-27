@@ -2,7 +2,7 @@
 //!
 //! This is *real* Diffie-Hellman, not an emulation: the hybrid KEM's X25519 half therefore performs
 //! an actual scalar multiplication, which is what makes the shared-secret agreement in
-//! [`crate::kem`] a genuine DH exchange. The implementation uses the textbook Montgomery ladder
+//! [`super::kem`] a genuine DH exchange. The implementation uses the textbook Montgomery ladder
 //! with a branch-free conditional swap and is validated against the RFC 7748 §5.2 / §6.1 vectors.
 //!
 //! Representation: four 64-bit little-endian limbs (bit 255 masked on decode). Multiplication is a
@@ -288,7 +288,7 @@ pub fn public_key(secret: &[u8; 32]) -> [u8; 32] {
     x25519(secret, &BASE_POINT)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

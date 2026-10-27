@@ -12,7 +12,7 @@
 //! * reconstruction is indexed, not order-dependent: `FecBlockAssembler` keys shards by index, so a
 //!   reordering or duplication of datagrams cannot change the result (Post-Mortem 2, ADR-012).
 
-use crate::frames::{
+use super::frames::{
     FecError, FecRepairFrame, FecSourceFrame, FEC_REPAIR_HEADER_BYTES, FEC_SOURCE_HEADER_BYTES,
 };
 use bytes::{Bytes, BytesMut};
@@ -384,7 +384,7 @@ impl FecBlockAssembler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

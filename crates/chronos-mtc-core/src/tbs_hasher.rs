@@ -9,8 +9,8 @@
 //! 2. **No BER malleability.** Every TLV must use the minimal-length DER encoding, so two distinct
 //!    byte strings can never collapse onto the same leaf hash.
 
-use crate::error::{MtcError, MtcResult};
-use crate::subtrees::{MAX_UINT48, MTC_LEAF_PREFIX};
+use super::error::{MtcError, MtcResult};
+use super::subtrees::{MAX_UINT48, MTC_LEAF_PREFIX};
 use sha2::{Digest, Sha256};
 
 /// DER tag for `SEQUENCE`.
@@ -273,7 +273,7 @@ pub fn hash_tbs_certificate_streaming(fields: &TbsCertFields<'_>) -> MtcResult<[
     Ok(hasher.finalize().into())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

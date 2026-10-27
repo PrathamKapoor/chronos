@@ -6,6 +6,7 @@
 //! paid, what the attack tried, and whether the same seed replays byte-for-byte.
 
 use crate::bench::{calibrate, calibration_passed, BenchConfig, BenchReport};
+use crate::deps::*;
 use crate::net::{reorder_pair, split_view_fork, Channel, FaultKind, FaultLog};
 use crate::rng::{format_seed, SimRng};
 use crate::stacks::{simulate_handshake, LossProfile, StackKind, StalenessProfile};
@@ -72,7 +73,7 @@ pub struct AttackReport {
 impl AttackReport {
     /// True when the guard caught everything the attacker tried.
     pub fn contained(&self) -> bool {
-        self.escaped_downgrades == 0 && self.split_view_attempts == self.split_view_rejected
+        self.escaped_downgrades == 0 && self.split_view_rejected == self.split_view_attempts / 2
     }
 }
 

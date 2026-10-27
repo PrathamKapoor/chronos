@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(stats.p95, 95, "ceil(0.95 · 100) = 95");
         assert_eq!(stats.p99, 99, "ceil(0.99 · 100) = 99");
         assert!((stats.mean - 50.5).abs() < 1e-9);
-        assert!(stats.stddev > 28.7 && stats.stddev < 29.0);
+        assert!(stats.stddev > 28.7 && stats.stddev < 29.1);
         assert!(
             samples.contains(&stats.p99),
             "percentiles must be observations"

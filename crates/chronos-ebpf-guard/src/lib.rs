@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! # chronos-ebpf-guard
 //!
 //! The downgrade guard: a bounded QUIC Initial sensor, a three-state policy matrix, ML-DSA-65 signed
@@ -32,9 +33,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[cfg(chronos_bundled)]
+#[allow(unused_imports)]
+pub use super::{chrono_mtc_core, chrono_pqc_sys, chronos_mtc_core, chronos_pqc_sys};
+#[path = "kernel/mod.rs"]
 pub mod kernel;
+#[path = "parser.rs"]
 pub mod parser;
+#[path = "policy.rs"]
 pub mod policy;
+#[path = "rings.rs"]
 pub mod rings;
 
 pub use kernel::{GuardConfig, PipelineOutcome, UserspaceGuard};

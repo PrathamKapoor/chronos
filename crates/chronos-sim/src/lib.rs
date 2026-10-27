@@ -47,17 +47,21 @@
 // alias that is off when they are built on their own. See decisions.md ADR-013.
 
 /// Layer 5: the 256-byte QUIC Initial sensor, downgrade policy and batch verification rings.
-#[path = "../../chronos-ebpf-guard/src/lib.rs"]
-pub mod chronos_ebpf_guard;
-/// Layer 1-2: IETF PLANTS Merkle Tree Certificates, skip-links and C2SP cosignatures.
 #[path = "../../chronos-mtc-core/src/lib.rs"]
 pub mod chronos_mtc_core;
-/// Layer 2: the post-quantum primitives (X25519MLKEM768, ML-DSA-44/65).
+pub use self::chronos_mtc_core as chrono_mtc_core;
+
 #[path = "../../chronos-pqc-sys/src/lib.rs"]
 pub mod chronos_pqc_sys;
-/// Layer 3-4: QUIC amplification planning, SIMD Reed-Solomon FEC and the custom frames.
+pub use self::chronos_pqc_sys as chrono_pqc_sys;
+
 #[path = "../../chronos-quic-fec/src/lib.rs"]
 pub mod chronos_quic_fec;
+pub use self::chronos_quic_fec as chrono_quic_fec;
+
+#[path = "../../chronos-ebpf-guard/src/lib.rs"]
+pub mod chronos_ebpf_guard;
+pub use self::chronos_ebpf_guard as chrono_ebpf_guard;
 
 pub mod bench;
 pub mod deps;

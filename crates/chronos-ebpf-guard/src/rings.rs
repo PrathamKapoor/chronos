@@ -5,7 +5,12 @@
 //! anything longer. An attacker must therefore be unable to turn a monitoring decision into unbounded
 //! memory growth, which is exactly the property the kernel plane does not get for free.
 
-use crate::policy::MonitorAlert;
+use super::policy::MonitorAlert;
+#[cfg(chronos_bundled)]
+use crate::chronos_mtc_core::subtrees::MerkleTreeLog;
+#[cfg(chronos_bundled)]
+use crate::chronos_pqc_sys;
+#[cfg(not(chronos_bundled))]
 use chronos_mtc_core::subtrees::MerkleTreeLog;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -271,16 +276,21 @@ impl Default for MultishotVerifyRing {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
+    use super::super::parser::parse_quic_initial_256b;
     use super::*;
-    use crate::parser::parse_quic_initial_256b;
+    #[cfg(chronos_bundled)]
+    use crate::chronos_mtc_core::subtrees::MerkleTreeLog;
+    #[cfg(chronos_bundled)]
+    use crate::chronos_pqc_sys;
+    #[cfg(not(chronos_bundled))]
     use chronos_mtc_core::subtrees::MerkleTreeLog;
 
     fn alert(code: u16) -> MonitorAlert {
         MonitorAlert {
             code,
-            peer: crate::policy::PeerAddr {
+            peer: super::super::policy::PeerAddr {
                 ip: [10, 0, 0, 1],
                 port: 443,
             },

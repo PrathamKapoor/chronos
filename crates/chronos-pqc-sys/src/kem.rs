@@ -253,7 +253,7 @@ pub fn x25519_mlkem768_keygen(
     let decaps_key = expand_secret_key(&kem_seed);
 
     let mut public = Box::new([0u8; X25519MLKEM768_PUBLIC_KEY_LEN]);
-    public[..X25519_PUBLIC_KEY_LEN].copy_from_slice(&crate::x25519::public_key(&x25519_secret));
+    public[..X25519_PUBLIC_KEY_LEN].copy_from_slice(&super::x25519::public_key(&x25519_secret));
     public[X25519_PUBLIC_KEY_LEN..].copy_from_slice(&encaps_key);
 
     let mut secret = Box::new([0u8; X25519MLKEM768_SECRET_KEY_LEN]);
@@ -332,8 +332,8 @@ pub fn x25519_mlkem768_encapsulate(
         .x25519()
         .try_into()
         .expect("the X25519 component is 32 bytes");
-    let eph_public = crate::x25519::public_key(&eph_x25519);
-    let encap_x = crate::x25519::x25519(&eph_x25519, &peer_public);
+    let eph_public = super::x25519::public_key(&eph_x25519);
+    let encap_x = super::x25519::x25519(&eph_x25519, &peer_public);
     let encap_k = kem_shared_secret(public_key.ml_kem768(), &body);
     let shared = combine_shared_secrets(&encap_x, &encap_k);
 
@@ -371,7 +371,7 @@ pub fn x25519_mlkem768_decapsulate(
         .x25519()
         .try_into()
         .expect("the X25519 component is 32 bytes");
-    let decap_x = crate::x25519::x25519(&secret_key.x25519_array(), &eph_public);
+    let decap_x = super::x25519::x25519(&secret_key.x25519_array(), &eph_public);
 
     let kem_ct = ciphertext.ml_kem768();
     let (body, tag) = kem_ct.split_at(MLKEM_CT_BODY_LEN);
@@ -392,7 +392,7 @@ pub fn x25519_mlkem768_decapsulate(
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
     use rand_chacha::ChaCha8Rng;
@@ -486,7 +486,7 @@ mod tests {
         // The rejected secret is exactly combine(x25519_ss, rejection_secret(z, ct)) — no error path.
         let mut eph_public = [0u8; X25519_SECRET_KEY_LEN];
         eph_public.copy_from_slice(ct.x25519());
-        let x_secret = crate::x25519::x25519(&sk.x25519_array(), &eph_public);
+        let x_secret = super::super::x25519::x25519(&sk.x25519_array(), &eph_public);
         let expected_k = rejection_secret(sk.rejection_seed(), tampered_ct.ml_kem768());
         let expected = combine_shared_secrets(&x_secret, &expected_k);
         assert_eq!(ss_bad.as_bytes(), expected.as_slice());

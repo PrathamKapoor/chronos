@@ -30,7 +30,7 @@
 //! shorter identifiers first, then lexicographic; duplicates are rejected; RFC 8701 GREASE entries
 //! stay on the wire but never count toward quorum.
 
-use crate::error::{MtcError, MtcResult};
+use super::error::{MtcError, MtcResult};
 use serde::{Deserialize, Serialize};
 
 /// `id-alg-mtcProof` = 1.3.6.1.5.5.7.6.67, as a DER OBJECT IDENTIFIER TLV (draft §6.2).
@@ -441,7 +441,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

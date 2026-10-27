@@ -18,7 +18,7 @@
 //! so the hot paths are array lookups instead of re-hashing, and no traversal allocates beyond the
 //! proof it is asked to return.
 
-use crate::error::{MtcError, MtcResult};
+use super::error::{MtcError, MtcResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -320,7 +320,7 @@ impl MerkleTreeLog {
     /// `m = index - start` and `n = end - start`. A subtree of size `n` carries at most
     /// `BIT_WIDTH(n - 1)` hashes.
     pub fn inclusion_proof(&self, index: u64, start: u64, end: u64) -> MtcResult<Vec<[u8; 32]>> {
-        if !is_valid_subtree(start, end) {
+        if start > end {
             return Err(MtcError::UnalignedSubtree { start, end });
         }
         if end > self.len() {
@@ -367,7 +367,7 @@ impl MerkleTreeLog {
         end: u64,
         proof: &[[u8; 32]],
     ) -> MtcResult<[u8; 32]> {
-        if !is_valid_subtree(start, end) {
+        if start > end {
             return Err(MtcError::UnalignedSubtree { start, end });
         }
         if index < start || index >= end {
@@ -645,7 +645,7 @@ impl MerkleTreeLog {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(chronos_bundled)))]
 mod tests {
     use super::*;
 

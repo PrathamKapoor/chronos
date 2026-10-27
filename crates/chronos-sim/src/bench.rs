@@ -21,14 +21,15 @@ use std::path::{Path, PathBuf};
 //
 // These are deliberately *not* `extern crate ... as ...` bindings. `extern crate` resolves its
 // argument through a different path than the extern prelude, and on this host it fails to resolve
-// workspace path dependencies outright: `error[E0463]: can't find crate for chrono_mtc_core` is
+// workspace path dependencies outright: `error[E0463]: can't find crate for chronos_mtc_core` is
 // emitted even though cargo passes a correct, loadable `--extern` for it, and the same `--extern`
 // works for every other consumer in the workspace. The 2018 form resolves through the extern
 // prelude like any other import, which is the path that demonstrably works.
-use chrono_ebpf_guard as guard;
-use chrono_mtc_core as mtc;
-use chrono_pqc_sys as pqc;
-use chrono_quic_fec as fec;
+use crate::chronos_ebpf_guard as guard;
+use crate::chronos_mtc_core as mtc;
+use crate::chronos_pqc_sys as pqc;
+use crate::chronos_quic_fec as fec;
+use crate::deps::MtcError;
 
 use fec::{encode_block, FecBlockAssembler};
 use guard::kernel::{GuardConfig, UserspaceGuard};
@@ -236,9 +237,21 @@ pub fn run_benchmark(config: BenchConfig) -> BenchReport {
                 });
 
                 if stack == StackKind::ChronosMtc {
-                    rounds_samples.push((*loss, rounds));
+                    if let Some(entry) = rounds_samples.iter_mut().find(|(value, _)| value == loss)
+                    {
+                        entry.1.extend_from_slice(&rounds);
+                    } else {
+                        rounds_samples.push((*loss, rounds));
+                    }
                 } else {
-                    control_samples.push((*loss, stack, rounds));
+                    if let Some(entry) = control_samples
+                        .iter_mut()
+                        .find(|(value, s, _)| value == loss && s == &stack)
+                    {
+                        entry.2.extend_from_slice(&rounds);
+                    } else {
+                        control_samples.push((*loss, stack, rounds));
+                    }
                 }
             }
         }
@@ -348,7 +361,7 @@ pub fn calibrate() -> CalibrationReport {
     let mut forked = mtc_proof.clone();
     forked
         .signatures
-        .push(Cosignature::new(vec![0xFF], vec![0x33; 8]));
+        .insert(1, Cosignature::new(vec![0xFF], vec![0x33; 8]));
     let split_view_rejected =
         forked.encode() == Err(MtcError::DuplicateCosignerId) && round_trip.encode() == Ok(encoded);
 
@@ -356,7 +369,7 @@ pub fn calibrate() -> CalibrationReport {
     let mut landmarks = LandmarkGraph::new();
     for landmark in 0..CALIBRATION_LANDMARKS {
         landmarks
-            .publish_landmark(&log, landmark, &sign_checkpoint)
+            .publish_landmark(&log, landmark, sign_checkpoint)
             .expect("publish");
     }
     let client_root = landmarks.landmark(0).expect("landmark 0").root_hash;
@@ -364,7 +377,7 @@ pub fn calibrate() -> CalibrationReport {
         .plan_skip_link_sync(&log, 0, CALIBRATION_LANDMARKS - 1)
         .expect("plan");
     let skip_link_verified =
-        LandmarkGraph::verify_skip_link_sync(&plan, &client_root, &verify_checkpoint).is_ok();
+        LandmarkGraph::verify_skip_link_sync(&plan, &client_root, verify_checkpoint).is_ok();
 
     // 5. A real erasure-coded block losing one data shard.
     let payload: Vec<u8> = (0..2_000u32).map(|value| (value % 251) as u8).collect();
@@ -675,11 +688,11 @@ mod tests {
             seed_count: 2,
             stale_landmarks: 10_000,
         };
-        let first = run_benchmark(config);
+        let first = run_benchmark(config.clone());
         let second = run_benchmark(config);
         assert_eq!(first, second, "the same seed must replay exactly");
 
-        assert_eq!(first.cells.len(), 2 * 1 * 4);
+        assert_eq!(first.cells.len(), 8);
         assert_eq!(first.deltas.len(), 3, "target against three controls");
         assert_eq!(first.ranks.len(), 3);
         assert!(calibration_passed(&first));
@@ -733,14 +746,14 @@ mod tests {
             assert!(path.exists(), "{} missing", path.display());
         }
 
-        let first_csv = std::fs::read_to_string(&directory.join("benchmark_matrix.csv")).unwrap();
+        let first_csv = std::fs::read_to_string(directory.join("benchmark_matrix.csv")).unwrap();
         assert_eq!(
             first_csv,
             render_csv(&report),
             "CSV must be a pure function"
         );
 
-        let scorecard = std::fs::read_to_string(&directory.join("benchmark_scorecard.md")).unwrap();
+        let scorecard = std::fs::read_to_string(directory.join("benchmark_scorecard.md")).unwrap();
         assert!(scorecard.contains("# ChronosMTC benchmark scorecard"));
         assert!(scorecard.contains("ChronosMtc"));
         assert!(!scorecard.contains("T00:00"), "no timestamps in exports");
